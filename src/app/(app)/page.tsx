@@ -29,7 +29,11 @@ export default async function HomePage() {
 
   return (
     <main>
-      <PageHeader title={`Hi ${me?.name ?? "there"}`} subtitle={monthLabel(month)} />
+      <PageHeader
+        brand
+        title="Couple Expense Tracker"
+        subtitle={`Hi ${me?.name ?? "there"} · ${monthLabel(month)}`}
+      />
 
       <section className="grid grid-cols-2 gap-3 p-4">
         <div className="col-span-2 rounded-2xl bg-white p-4 shadow-sm">

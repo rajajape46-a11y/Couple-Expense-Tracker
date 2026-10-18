@@ -36,6 +36,8 @@ def live_count():
 
 def import_file(page, path):
     page.goto(BASE + "/settings/data")
+    expect(page.get_by_text("Choose an Excel file (.xlsx)")).to_be_visible()
+    page.wait_for_load_state("networkidle")
     page.set_input_files("input[type=file]", path)
     expect(page.get_by_test_id("import-preview")).to_be_visible(timeout=20000)
     counts = {}

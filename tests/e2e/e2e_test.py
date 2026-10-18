@@ -38,7 +38,7 @@ with sync_playwright() as p:
     page.fill("input[name=password]", "test1234")
     page.click("button[type=submit]")
     expect(page).to_have_url(BASE + "/")
-    check("home greets Raja", lambda: expect(page.get_by_role("heading", name="Hi Raja")).to_be_visible())
+    check("home greets Raja", lambda: expect(page.get_by_text("Hi Raja", exact=False).first).to_be_visible())
     check("home shows this month's total from imported data",
           lambda: expect(page.get_by_text("$10,285.20")).to_be_visible())
     page.screenshot(path=f"{SHOTS}/02-home.png", full_page=True)
@@ -130,7 +130,7 @@ with sync_playwright() as p:
     p2.fill("input[name=password]", "test1234")
     p2.click("button[type=submit]")
     expect(p2).to_have_url(BASE + "/")
-    check("Jo signs in and sees shared data", lambda: expect(p2.get_by_role("heading", name="Hi Jo")).to_be_visible())
+    check("Jo signs in and sees shared data", lambda: expect(p2.get_by_text("Hi Jo", exact=False).first).to_be_visible())
     p2.goto(BASE + "/transactions")
     check("Jo sees Raja's Coles entry", lambda: expect(p2.get_by_text("Coles Supermarket").first).to_be_visible())
 

@@ -2,9 +2,9 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: { default: "Couple Expenses", template: "%s · Couple Expenses" },
+  title: { default: "Couple Expense Tracker", template: "%s · Couple Expense Tracker" },
   description: "Raja & Jo's shared expense log",
-  appleWebApp: { capable: true, title: "Expenses", statusBarStyle: "default" },
+  appleWebApp: { capable: true, title: "Couple Expenses", statusBarStyle: "default" },
   icons: {
     icon: [{ url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }],
     apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180" }],

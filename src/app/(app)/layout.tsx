@@ -1,4 +1,6 @@
+import { Suspense } from "react";
 import { BottomNav } from "@/components/bottom-nav";
+import { NavProgress } from "@/components/nav-progress";
 import { getContext } from "@/lib/data";
 import { signOut } from "@/app/actions";
 
@@ -25,6 +27,9 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
 
   return (
     <>
+      <Suspense fallback={null}>
+        <NavProgress />
+      </Suspense>
       <div className="mx-auto max-w-xl pb-28">{children}</div>
       <BottomNav />
     </>

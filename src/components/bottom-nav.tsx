@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import { BarChart3, Home, List, Plus, Settings } from "lucide-react";
 
@@ -28,13 +28,9 @@ export function BottomNav() {
                   active ? "text-navy" : "text-muted"
                 }`}
               >
-                {primary ? (
-                  <span className="-mt-5 flex h-12 w-12 items-center justify-center rounded-full bg-teal text-white shadow-lg ring-4 ring-canvas">
-                    <Icon size={26} strokeWidth={2.5} />
-                  </span>
-                ) : (
-                  <Icon size={22} strokeWidth={active ? 2.5 : 2} />
-                )}
+                <NavIcon primary={primary} active={active}>
+                  <Icon size={primary ? 26 : 22} strokeWidth={primary || active ? 2.5 : 2} />
+                </NavIcon>
                 {label}
               </Link>
             </li>
@@ -43,4 +39,19 @@ export function BottomNav() {
       </ul>
     </nav>
   );
+}
+
+/** Icon that bounces while the page it links to is loading (instant tap feedback). */
+function NavIcon({ primary, active, children }: { primary: boolean; active: boolean; children: React.ReactNode }) {
+  const { pending } = useLinkStatus();
+  if (primary) {
+    return (
+      <span
+        className={`-mt-5 flex h-12 w-12 items-center justify-center rounded-full bg-teal text-white shadow-lg ring-4 ring-canvas ${pending ? "nav-pending" : ""}`}
+      >
+        {children}
+      </span>
+    );
+  }
+  return <span className={`${pending ? "nav-pending text-teal" : active ? "" : ""}`}>{children}</span>;
 }

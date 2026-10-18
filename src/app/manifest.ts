@@ -3,7 +3,7 @@ import type { MetadataRoute } from "next";
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "Couple Expense Tracker",
-    short_name: "Expenses",
+    short_name: "Couple Expenses",
     description: "Raja & Jo's shared expense log",
     start_url: "/",
     display: "standalone",

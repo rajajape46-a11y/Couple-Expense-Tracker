@@ -38,3 +38,102 @@ input[type="number"]::-webkit-inner-spin-button {
   -webkit-appearance: none;
   margin: 0;
 }
+
+/* ---------------------------------------------------------------- loading */
+
+/* coin loader: three coins drop into the jar in turn, the jar slowly fills */
+.coin-loader .coin {
+  animation: coin-drop 1.8s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.coin-loader .coin-1 { animation-delay: 0.6s; }
+.coin-loader .coin-2 { animation-delay: 1.2s; }
+@keyframes coin-drop {
+  0%   { opacity: 0; transform: translate(-14px, -6px) rotate(-30deg) scale(0.9); }
+  15%  { opacity: 1; }
+  55%  { opacity: 1; transform: translate(0, 40px) rotate(160deg) scale(1); }
+  70%  { opacity: 1; transform: translate(0, 62px) rotate(200deg) scale(0.85); }
+  85%, 100% { opacity: 0; transform: translate(0, 78px) rotate(220deg) scale(0.6); }
+}
+.coin-loader .jar-fill {
+  animation: jar-fill 3.6s ease-in-out infinite;
+  transform-box: fill-box;
+}
+@keyframes jar-fill {
+  0%   { transform: translateY(58px); }
+  80%  { transform: translateY(10px); }
+  100% { transform: translateY(58px); }
+}
+.loader-captions p {
+  height: 1.25rem;
+  line-height: 1.25rem;
+  text-align: center;
+  animation: captions 5.4s steps(1, end) infinite;
+}
+@keyframes captions {
+  0%      { transform: translateY(0); }
+  33.33%  { transform: translateY(-100%); }
+  66.66%  { transform: translateY(-200%); }
+  100%    { transform: translateY(-300%); }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, #e9edf1 0%, #f6f8fa 50%, #e9edf1 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.3s ease-in-out infinite;
+}
+@keyframes shimmer {
+  from { background-position: 100% 0; }
+  to   { background-position: -100% 0; }
+}
+
+/* top progress bar */
+.nav-progress {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 50;
+  height: 3px;
+  pointer-events: none;
+  padding-top: env(safe-area-inset-top);
+}
+.nav-progress-bar {
+  height: 3px;
+  width: 0;
+  opacity: 0;
+  border-radius: 0 3px 3px 0;
+  background: linear-gradient(90deg, var(--color-teal), var(--color-amber));
+  box-shadow: 0 0 8px rgb(42 157 143 / 0.7);
+}
+.nav-progress-loading .nav-progress-bar {
+  opacity: 1;
+  animation: progress-grow 8s cubic-bezier(0.08, 0.8, 0.2, 1) forwards;
+}
+.nav-progress-done .nav-progress-bar {
+  opacity: 0;
+  width: 100%;
+  transition: width 0.2s ease-out, opacity 0.3s ease 0.15s;
+}
+@keyframes progress-grow {
+  from { width: 0; }
+  to   { width: 92%; }
+}
+
+/* tapped bottom-nav item gives a little bounce while its page loads */
+.nav-pending {
+  animation: nav-bounce 0.7s ease-in-out infinite;
+}
+@keyframes nav-bounce {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-3px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .coin-loader .coin, .coin-loader .jar-fill, .loader-captions p, .skeleton, .nav-pending,
+  .nav-progress-loading .nav-progress-bar {
+    animation-duration: 0s !important;
+    animation-iteration-count: 1 !important;
+  }
+  .coin-loader .coin-0 { opacity: 1; transform: translate(0, 40px); }
+}

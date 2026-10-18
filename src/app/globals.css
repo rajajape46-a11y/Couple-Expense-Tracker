@@ -1,26 +1,40 @@
 @import "tailwindcss";
 
+@theme {
+  --color-navy: #1f3a52;
+  --color-navy-soft: #2c4f6e;
+  --color-teal: #2a9d8f;
+  --color-teal-soft: #e3f3f1;
+  --color-amber: #e9a23b;
+  --color-coral: #c0504d;
+  --color-ink: #1b2430;
+  --color-muted: #5b6b7b;
+  --color-line: #e3e7eb;
+  --color-canvas: #f4f6f8;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+html,
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 16px inputs stop iOS from zooming in when a field is tapped */
+input,
+select,
+textarea {
+  font-size: 16px;
+}
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }

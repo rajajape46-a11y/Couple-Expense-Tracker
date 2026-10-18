@@ -5,8 +5,8 @@ import { supabaseEnv } from "./env";
 
 /** Supabase client for Server Components, Server Actions and Route Handlers. */
 export async function createClient() {
+  const cookieStore = await cookies(); // first, so pages are always treated as per-request
   const { url, key } = supabaseEnv();
-  const cookieStore = await cookies();
   return createServerClient(url, key, {
     cookies: {
       getAll() {

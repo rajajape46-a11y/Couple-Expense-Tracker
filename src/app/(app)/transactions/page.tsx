@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { TxnRow } from "@/components/txn-row";
-import { getCategories, getContext, getTransactions } from "@/lib/data";
+import { catchUpRecurring, getCategories, getContext, getTransactions } from "@/lib/data";
 import {
   dayLabel,
   isMonth,
@@ -25,6 +25,7 @@ export default async function TransactionsPage({ searchParams }: PageProps<"/tra
   const cat = one(sp.cat);
 
   const { people } = await getContext();
+  await catchUpRecurring();
   const { from, to } = monthRange(month);
   const [txns, categories] = await Promise.all([
     getTransactions({ from, to, q: q || undefined, categoryId: cat || undefined }),

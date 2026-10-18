@@ -1,13 +1,16 @@
 "use client";
 
 import { startTransition, useActionState, useMemo, useRef, useState } from "react";
-import { saveTransaction } from "@/app/actions";
+import { saveRecurring, saveTransaction } from "@/app/actions";
 import {
   EXPENSE_TYPES,
+  FREQUENCIES,
+  FREQUENCY_LABEL,
   PAYMENT_METHODS,
   type Category,
   type ExpenseType,
   type FormState,
+  type Frequency,
   type MerchantMemory,
   type Person,
   type Transaction,
@@ -23,11 +26,15 @@ type Props = {
     subExpense: Record<string, ExpenseType>;
     topMerchants: string[];
   };
+  /** Prefill values. For an existing expense, include its id. */
   initial?: Transaction;
+  /** Present when the form edits/creates a recurring rule instead of an expense. */
+  recurring?: { id?: string; frequency: Frequency; endDate: string | null };
 };
 
-export function TransactionForm({ categories, people, meId, today, hints, initial }: Props) {
-  const editing = Boolean(initial);
+export function TransactionForm({ categories, people, meId, today, hints, initial, recurring }: Props) {
+  const editing = recurring ? Boolean(recurring.id) : Boolean(initial?.id);
+  const prefilled = Boolean(initial);
   const amountRef = useRef<HTMLInputElement>(null);
 
   const [amount, setAmount] = useState(initial ? String(initial.amount) : "");
@@ -36,7 +43,7 @@ export function TransactionForm({ categories, people, meId, today, hints, initia
   const [categoryId, setCategoryId] = useState(initial?.category_id ?? "");
   const [subcategoryId, setSubcategoryId] = useState(initial?.subcategory_id ?? "");
   const [expenseType, setExpenseType] = useState<ExpenseType | "">(initial?.expense_type ?? "");
-  const [expenseTouched, setExpenseTouched] = useState(editing);
+  const [expenseTouched, setExpenseTouched] = useState(prefilled);
   const [paidBy, setPaidBy] = useState(initial?.paid_by ?? meId ?? people[0]?.id ?? "");
   const [split, setSplit] = useState(
     initial ? (initial.split_type === "shared" ? "shared" : initial.personal_for ?? "shared") : "shared",
@@ -45,9 +52,12 @@ export function TransactionForm({ categories, people, meId, today, hints, initia
   const [oneOff, setOneOff] = useState(initial?.is_one_off ?? false);
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [filledFrom, setFilledFrom] = useState<string | null>(null);
+  const [repeat, setRepeat] = useState("");
+  const [frequency, setFrequency] = useState<Frequency>(recurring?.frequency ?? "monthly");
+  const [endDate, setEndDate] = useState(recurring?.endDate ?? "");
 
   const [state, action, pending] = useActionState<FormState, FormData>(async (prev, fd) => {
-    const result = await saveTransaction(prev, fd);
+    const result = await (recurring ? saveRecurring : saveTransaction)(prev, fd);
     if (result?.ok) {
       // "Save & add another": keep the date and who paid; clear the rest so the
       // next expense isn't accidentally filed under the previous category.
@@ -61,6 +71,7 @@ export function TransactionForm({ categories, people, meId, today, hints, initia
       setNotes("");
       setOneOff(false);
       setFilledFrom(null);
+      setRepeat("");
       setExpenseTouched(false);
       amountRef.current?.focus();
     }
@@ -90,7 +101,7 @@ export function TransactionForm({ categories, people, meId, today, hints, initia
   }
 
   function applyMemory(value: string) {
-    if (editing) return;
+    if (prefilled) return;
     const m = hints.memory[value.trim().toLowerCase()];
     if (!m) {
       setFilledFrom(null);
@@ -121,7 +132,9 @@ export function TransactionForm({ categories, people, meId, today, hints, initia
       }}
       className="space-y-5 p-4"
     >
-      {initial && <input type="hidden" name="id" value={initial.id} />}
+      {recurring?.id && <input type="hidden" name="id" value={recurring.id} />}
+      {!recurring && initial?.id && <input type="hidden" name="id" value={initial.id} />}
+      {recurring && <input type="hidden" name="frequency" value={frequency} />}
       <input type="hidden" name="category_id" value={categoryId} />
       <input type="hidden" name="subcategory_id" value={subcategoryId} />
       <input type="hidden" name="expense_type" value={expenseType} />
@@ -142,7 +155,7 @@ export function TransactionForm({ categories, people, meId, today, hints, initia
             inputMode="decimal"
             autoComplete="off"
             placeholder="0.00"
-            autoFocus={!editing}
+            autoFocus={!prefilled}
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             className="w-full bg-transparent tabular-nums outline-none placeholder:text-line"
@@ -174,7 +187,7 @@ export function TransactionForm({ categories, people, meId, today, hints, initia
             ))}
           </datalist>
         </label>
-        {!editing && hints.topMerchants.length > 0 && !merchant && (
+        {!prefilled && hints.topMerchants.length > 0 && !merchant && (
           <div className="flex flex-wrap gap-2">
             {hints.topMerchants.map((m) => (
               <button
@@ -197,7 +210,9 @@ export function TransactionForm({ categories, people, meId, today, hints, initia
           </p>
         )}
         <label className="block">
-          <span className="text-xs font-semibold uppercase tracking-wide text-muted">Date</span>
+          <span className="text-xs font-semibold uppercase tracking-wide text-muted">
+            {recurring ? (editing ? "Next date" : "First date") : "Date"}
+          </span>
           <input
             type="date"
             name="txn_date"
@@ -208,6 +223,32 @@ export function TransactionForm({ categories, people, meId, today, hints, initia
           />
         </label>
       </div>
+
+      {recurring && (
+        <div className="space-y-3 rounded-2xl bg-white p-4 shadow-sm">
+          <Segmented
+            label="Repeats"
+            value={frequency}
+            options={FREQUENCIES.map((f) => ({ value: f, label: FREQUENCY_LABEL[f] }))}
+            onChange={(v) => setFrequency(v as Frequency)}
+          />
+          <label className="block">
+            <span className="text-xs font-semibold uppercase tracking-wide text-muted">Ends on (optional)</span>
+            <input
+              type="date"
+              name="end_date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="mt-1 w-full rounded-xl border border-line px-3 py-2.5 outline-none focus:border-teal"
+            />
+          </label>
+          <p className="text-xs text-muted">
+            {editing
+              ? "Changes apply to future expenses only. Changing the date or how often it repeats restarts the schedule from that date."
+              : "If the first date is today or in the past, the expenses up to today are created straight away."}
+          </p>
+        </div>
+      )}
 
       {/* Category */}
       <div className="space-y-3 rounded-2xl bg-white p-4 shadow-sm">
@@ -288,6 +329,24 @@ export function TransactionForm({ categories, people, meId, today, hints, initia
             ))}
           </select>
         </label>
+        {!recurring && !editing && (
+          <label className="block">
+            <span className="text-xs font-semibold uppercase tracking-wide text-muted">Repeat</span>
+            <select
+              name="repeat"
+              value={repeat}
+              onChange={(e) => setRepeat(e.target.value)}
+              className="mt-1 w-full rounded-xl border border-line bg-white px-3 py-2.5 outline-none focus:border-teal"
+            >
+              <option value="">Doesn&apos;t repeat</option>
+              {FREQUENCIES.map((f) => (
+                <option key={f} value={f}>
+                  {FREQUENCY_LABEL[f]} from this date
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className="flex items-center justify-between gap-3">
           <span>
             <span className="block font-medium">One-off cost</span>
@@ -325,7 +384,11 @@ export function TransactionForm({ categories, people, meId, today, hints, initia
       )}
 
       <div className="sticky bottom-24 flex gap-3">
-        {editing ? (
+        {recurring ? (
+          <ActionButton pending={pending} primary>
+            {editing ? "Save recurring expense" : "Create recurring expense"}
+          </ActionButton>
+        ) : editing ? (
           <ActionButton pending={pending} primary>
             Save changes
           </ActionButton>

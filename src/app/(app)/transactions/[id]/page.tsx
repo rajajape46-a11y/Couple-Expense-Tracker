@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, Repeat } from "lucide-react";
 import { deleteTransaction } from "@/app/actions";
 import { PageHeader } from "@/components/page-header";
 import { TransactionForm } from "@/components/transaction-form";
@@ -41,6 +41,21 @@ export default async function EditPage({ params }: PageProps<"/transactions/[id]
           </Link>
         }
       />
+      {txn.recurring_rule_id ? (
+        <Link
+          href={`/settings/recurring/${txn.recurring_rule_id}`}
+          className="mx-4 mt-4 flex items-center gap-2 rounded-xl bg-teal-soft px-4 py-3 text-sm text-teal"
+        >
+          <Repeat size={16} /> Added by a recurring expense – edit the rule to change future ones
+        </Link>
+      ) : (
+        <Link
+          href={`/settings/recurring/new?from=${txn.id}`}
+          className="mx-4 mt-4 flex items-center gap-2 rounded-xl border border-line bg-white px-4 py-3 text-sm text-navy"
+        >
+          <Repeat size={16} /> Make this a recurring expense
+        </Link>
+      )}
       <TransactionForm
         categories={visible}
         people={people}

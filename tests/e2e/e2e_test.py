@@ -39,8 +39,8 @@ with sync_playwright() as p:
     page.click("button[type=submit]")
     expect(page).to_have_url(BASE + "/")
     check("home greets Raja", lambda: expect(page.get_by_role("heading", name="Hi Raja")).to_be_visible())
-    check("home shows all-time settle-up from imported data",
-          lambda: expect(page.get_by_text("Jo owes Raja $6,280.39")).to_be_visible())
+    check("home shows this month's total from imported data",
+          lambda: expect(page.get_by_text("$10,285.20")).to_be_visible())
     page.screenshot(path=f"{SHOTS}/02-home.png", full_page=True)
 
     # ---- quick add with merchant memory

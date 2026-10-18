@@ -5,16 +5,32 @@ import { createClient } from "./supabase/server";
 import type {
   Category,
   ExpenseType,
+  ImportRecord,
   MerchantMemory,
   Person,
+  RecurringRule,
   Transaction,
 } from "./types";
 
 const TXN_FIELDS =
-  "id,txn_date,merchant,category_id,subcategory_id,expense_type,paid_by,split_type,personal_for,payment_method,amount,is_one_off,notes";
+  "id,txn_date,merchant,category_id,subcategory_id,expense_type,paid_by,split_type,personal_for,payment_method,amount,is_one_off,notes,recurring_rule_id";
 
 const toTxn = (r: Record<string, unknown>): Transaction =>
   ({ ...r, amount: Number(r.amount) }) as Transaction;
+
+/** Supabase returns at most 1,000 rows per request; this pages through all of them. */
+async function fetchAll<T>(
+  page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+): Promise<T[]> {
+  const size = 1000;
+  const out: T[] = [];
+  for (let from = 0; ; from += size) {
+    const { data, error } = await page(from, from + size - 1);
+    if (error) throw new Error(error.message);
+    out.push(...(data ?? []));
+    if (!data || data.length < size) return out;
+  }
+}
 
 /** Signed-in user, their household and the people in it. Cached per request. */
 export const getContext = cache(async () => {
@@ -38,6 +54,17 @@ export const getContext = cache(async () => {
     people: list,
     me: list.find((p) => p.user_id === user.id) ?? null,
   };
+});
+
+/**
+ * Creates any recurring expenses that are due for this household. The daily
+ * database job normally does this; calling it on page load is a safety net.
+ */
+export const catchUpRecurring = cache(async () => {
+  const { supabase } = await getContext();
+  const { data, error } = await supabase.rpc("run_my_recurring");
+  if (error) console.error("run_my_recurring failed:", error.message);
+  return (data as number | null) ?? 0;
 });
 
 export async function getCategories(includeArchived = false): Promise<Category[]> {
@@ -69,22 +96,30 @@ export async function getTransactions(opts: {
   q?: string;
   categoryId?: string;
   limit?: number;
+  ascending?: boolean;
 }): Promise<Transaction[]> {
   const { supabase } = await getContext();
-  let query = supabase
-    .from("transactions")
-    .select(TXN_FIELDS)
-    .is("deleted_at", null)
-    .order("txn_date", { ascending: false })
-    .order("created_at", { ascending: false });
-  if (opts.from) query = query.gte("txn_date", opts.from);
-  if (opts.to) query = query.lt("txn_date", opts.to);
-  if (opts.q) query = query.ilike("merchant", `%${opts.q.replace(/[%_]/g, "")}%`);
-  if (opts.categoryId) query = query.eq("category_id", opts.categoryId);
-  if (opts.limit) query = query.limit(opts.limit);
-  const { data, error } = await query;
-  if (error) throw new Error(error.message);
-  return (data ?? []).map(toTxn);
+  const build = () => {
+    let query = supabase
+      .from("transactions")
+      .select(TXN_FIELDS)
+      .is("deleted_at", null)
+      .order("txn_date", { ascending: Boolean(opts.ascending) })
+      .order("created_at", { ascending: Boolean(opts.ascending) })
+      .order("id");
+    if (opts.from) query = query.gte("txn_date", opts.from);
+    if (opts.to) query = query.lt("txn_date", opts.to);
+    if (opts.q) query = query.ilike("merchant", `%${opts.q.replace(/[%_]/g, "")}%`);
+    if (opts.categoryId) query = query.eq("category_id", opts.categoryId);
+    return query;
+  };
+  if (opts.limit) {
+    const { data, error } = await build().limit(opts.limit);
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(toTxn);
+  }
+  const rows = await fetchAll((a, b) => build().range(a, b));
+  return rows.map(toTxn);
 }
 
 export async function getTransaction(id: string): Promise<Transaction | null> {
@@ -99,18 +134,86 @@ export async function getTransaction(id: string): Promise<Transaction | null> {
   return data ? toTxn(data) : null;
 }
 
-/** Everything ever logged, for running balances (small data set: fine to load). */
-export async function getAllForBalance() {
+/** Monthly totals per category from the database view. */
+export async function getMonthlyTotals(from: string, to: string) {
+  const { supabase } = await getContext();
+  const rows = await fetchAll((a, b) =>
+    supabase
+      .from("monthly_category_totals")
+      .select("month,category_id,total,one_off,txn_count")
+      .gte("month", from)
+      .lt("month", to)
+      .order("month")
+      .order("category_id")
+      .range(a, b),
+  );
+  return rows.map((r) => ({
+    month: String(r.month).slice(0, 7),
+    category_id: r.category_id as string,
+    total: Number(r.total),
+    one_off: Number(r.one_off),
+    txn_count: Number(r.txn_count),
+  }));
+}
+
+/** Earliest month that has any expense (YYYY-MM), or null. */
+export async function getFirstMonth(): Promise<string | null> {
+  const { supabase } = await getContext();
+  const { data } = await supabase
+    .from("transactions")
+    .select("txn_date")
+    .is("deleted_at", null)
+    .order("txn_date")
+    .limit(1)
+    .maybeSingle();
+  return data ? String(data.txn_date).slice(0, 7) : null;
+}
+
+/** Stored expenses in a date range, for duplicate detection during import. */
+export async function getExistingForDuplicates(from: string, to: string) {
+  const { supabase } = await getContext();
+  return fetchAll((a, b) =>
+    supabase
+      .from("transactions")
+      .select("txn_date,amount,merchant")
+      .is("deleted_at", null)
+      .gte("txn_date", from)
+      .lte("txn_date", to)
+      .order("id")
+      .range(a, b),
+  ) as Promise<{ txn_date: string; amount: number; merchant: string }[]>;
+}
+
+export async function getImports(): Promise<ImportRecord[]> {
   const { supabase } = await getContext();
   const { data, error } = await supabase
-    .from("transactions")
-    .select("amount,paid_by,split_type,personal_for")
-    .is("deleted_at", null);
+    .from("imports")
+    .select("id,file_name,rows_added,rows_skipped,created_at,undone_at")
+    .order("created_at", { ascending: false })
+    .limit(10);
   if (error) throw new Error(error.message);
-  return (data ?? []).map((r) => ({ ...r, amount: Number(r.amount) })) as Pick<
-    Transaction,
-    "amount" | "paid_by" | "split_type" | "personal_for"
-  >[];
+  return (data ?? []) as ImportRecord[];
+}
+
+const RULE_FIELDS =
+  "id,merchant,category_id,subcategory_id,expense_type,paid_by,split_type,personal_for,payment_method,amount,is_one_off,notes,frequency,start_date,end_date,next_index,is_active";
+
+export async function getRecurringRules(): Promise<RecurringRule[]> {
+  const { supabase } = await getContext();
+  const { data, error } = await supabase
+    .from("recurring_rules")
+    .select(RULE_FIELDS)
+    .order("is_active", { ascending: false })
+    .order("merchant");
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((r) => ({ ...r, amount: Number(r.amount) })) as RecurringRule[];
+}
+
+export async function getRecurringRule(id: string): Promise<RecurringRule | null> {
+  const { supabase } = await getContext();
+  const { data, error } = await supabase.from("recurring_rules").select(RULE_FIELDS).eq("id", id).maybeSingle();
+  if (error) throw new Error(error.message);
+  return data ? ({ ...data, amount: Number(data.amount) } as RecurringRule) : null;
 }
 
 /**

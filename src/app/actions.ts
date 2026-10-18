@@ -5,7 +5,14 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getContext } from "@/lib/data";
 import { money } from "@/lib/format";
-import { EXPENSE_TYPES, PAYMENT_METHODS, type FormState } from "@/lib/types";
+import { occurrence } from "@/lib/recurring";
+import {
+  EXPENSE_TYPES,
+  FREQUENCIES,
+  PAYMENT_METHODS,
+  type FormState,
+  type Frequency,
+} from "@/lib/types";
 
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 
@@ -34,27 +41,39 @@ export async function signOut() {
 
 // ---------------------------------------------------------------- transactions
 
-export async function saveTransaction(_prev: FormState, fd: FormData): Promise<FormState> {
-  const { supabase, people } = await getContext();
+type Expense = {
+  merchant: string;
+  category_id: string;
+  subcategory_id: string | null;
+  expense_type: string;
+  paid_by: string;
+  split_type: "shared" | "personal";
+  personal_for: string | null;
+  payment_method: string | null;
+  amount: number;
+  is_one_off: boolean;
+  notes: string | null;
+};
 
-  const id = str(fd, "id");
-  const intent = str(fd, "intent");
+/** Validates the fields shared by expenses and recurring rules. */
+function parseExpense(
+  fd: FormData,
+  people: { id: string }[],
+): { ok: true; date: string; expense: Expense } | { ok: false; message: string } {
   const amount = Number(str(fd, "amount").replace(/[$,\s]/g, ""));
   const merchant = str(fd, "merchant");
-  const txn_date = str(fd, "txn_date");
+  const date = str(fd, "txn_date");
   const category_id = str(fd, "category_id");
   const subcategory_id = str(fd, "subcategory_id") || null;
   const expense_type = str(fd, "expense_type");
   const paid_by = str(fd, "paid_by");
   const split = str(fd, "split"); // "shared" or a person id
   const payment_method = str(fd, "payment_method") || null;
-  const is_one_off = fd.get("is_one_off") === "on";
-  const notes = str(fd, "notes") || null;
 
   if (!Number.isFinite(amount) || amount === 0) return { ok: false, message: "Enter an amount." };
   if (Math.abs(amount) >= 10_000_000) return { ok: false, message: "That amount looks too large." };
   if (!merchant) return { ok: false, message: "Enter who you paid (merchant / description)." };
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(txn_date)) return { ok: false, message: "Pick a date." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { ok: false, message: "Pick a date." };
   if (!category_id) return { ok: false, message: "Pick a category." };
   if (!subcategory_id) return { ok: false, message: "Pick a sub-category." };
   if (!(EXPENSE_TYPES as readonly string[]).includes(expense_type))
@@ -65,31 +84,141 @@ export async function saveTransaction(_prev: FormState, fd: FormData): Promise<F
   if (payment_method && !(PAYMENT_METHODS as readonly string[]).includes(payment_method))
     return { ok: false, message: "Unknown payment method." };
 
-  const row = {
-    txn_date,
-    merchant,
-    category_id,
-    subcategory_id,
-    expense_type,
-    paid_by,
-    split_type: split === "shared" ? "shared" : "personal",
-    personal_for: split === "shared" ? null : split,
-    payment_method,
-    amount: Math.round(amount * 100) / 100,
-    is_one_off,
-    notes,
+  return {
+    ok: true,
+    date,
+    expense: {
+      merchant,
+      category_id,
+      subcategory_id,
+      expense_type,
+      paid_by,
+      split_type: split === "shared" ? "shared" : "personal",
+      personal_for: split === "shared" ? null : split,
+      payment_method,
+      amount: Math.round(amount * 100) / 100,
+      is_one_off: fd.get("is_one_off") === "on",
+      notes: str(fd, "notes") || null,
+    },
   };
+}
 
-  const { error } = id
-    ? await supabase.from("transactions").update(row).eq("id", id)
-    : await supabase.from("transactions").insert(row);
-  if (error) return { ok: false, message: friendly(error) };
+const isFrequency = (v: string): v is Frequency => (FREQUENCIES as readonly string[]).includes(v);
+
+export async function saveTransaction(_prev: FormState, fd: FormData): Promise<FormState> {
+  const { supabase, people } = await getContext();
+  const id = str(fd, "id");
+  const intent = str(fd, "intent");
+  const repeat = str(fd, "repeat");
+  const parsed = parseExpense(fd, people);
+  if (!parsed.ok) return parsed;
+  const { date, expense } = parsed;
+  const row = { ...expense, txn_date: date };
+
+  if (id) {
+    const { error } = await supabase.from("transactions").update(row).eq("id", id);
+    if (error) return { ok: false, message: friendly(error) };
+  } else if (repeat && isFrequency(repeat)) {
+    // This expense is occurrence 0 of a new recurring rule; the rule continues from the next one.
+    const { data: rule, error: ruleError } = await supabase
+      .from("recurring_rules")
+      .insert({ ...expense, frequency: repeat, start_date: date, next_index: 1 })
+      .select("id")
+      .single();
+    if (ruleError) return { ok: false, message: friendly(ruleError) };
+    const { error } = await supabase
+      .from("transactions")
+      .insert({ ...row, recurring_rule_id: rule.id, recurring_date: date });
+    if (error) {
+      await supabase.from("recurring_rules").delete().eq("id", rule.id);
+      return { ok: false, message: friendly(error) };
+    }
+    await supabase.rpc("run_my_recurring"); // in case the first date was in the past
+  } else {
+    const { error } = await supabase.from("transactions").insert(row);
+    if (error) return { ok: false, message: friendly(error) };
+  }
 
   revalidatePath("/", "layout");
   if (intent === "again") {
-    return { ok: true, message: `Saved ${merchant} · ${money(row.amount)}`, savedAt: Date.now() };
+    return { ok: true, message: `Saved ${expense.merchant} · ${money(expense.amount)}`, savedAt: Date.now() };
   }
-  redirect(`/transactions?month=${txn_date.slice(0, 7)}`);
+  redirect(`/transactions?month=${date.slice(0, 7)}`);
+}
+
+// ---------------------------------------------------------------- recurring rules
+
+export async function saveRecurring(_prev: FormState, fd: FormData): Promise<FormState> {
+  const { supabase, people } = await getContext();
+  const id = str(fd, "id");
+  const frequency = str(fd, "frequency");
+  const endDate = str(fd, "end_date") || null;
+  const parsed = parseExpense(fd, people);
+  if (!parsed.ok) return parsed;
+  if (!isFrequency(frequency)) return { ok: false, message: "Pick how often it repeats." };
+  if (endDate && !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) return { ok: false, message: "Invalid end date." };
+  if (endDate && endDate < parsed.date) return { ok: false, message: "End date must be after the first date." };
+
+  const base = { ...parsed.expense, frequency, end_date: endDate };
+  if (id) {
+    const { data: current } = await supabase
+      .from("recurring_rules")
+      .select("start_date,frequency,next_index")
+      .eq("id", id)
+      .maybeSingle();
+    if (!current) return { ok: false, message: "That recurring expense no longer exists." };
+    const shownNext = occurrence(current.start_date, current.frequency as Frequency, current.next_index);
+    // Changing the date or frequency restarts the schedule from the chosen date.
+    const scheduleChanged = parsed.date !== shownNext || frequency !== current.frequency;
+    const update = scheduleChanged ? { ...base, start_date: parsed.date, next_index: 0 } : base;
+    const { error } = await supabase.from("recurring_rules").update(update).eq("id", id);
+    if (error) return { ok: false, message: friendly(error) };
+  } else {
+    const { error } = await supabase
+      .from("recurring_rules")
+      .insert({ ...base, start_date: parsed.date, next_index: 0 });
+    if (error) return { ok: false, message: friendly(error) };
+  }
+  await supabase.rpc("run_my_recurring"); // create anything already due
+  revalidatePath("/", "layout");
+  redirect("/settings/recurring");
+}
+
+export async function setRecurringActive(fd: FormData) {
+  const { supabase } = await getContext();
+  const active = str(fd, "active") === "true";
+  const { error } = await supabase
+    .from("recurring_rules")
+    .update({ is_active: active })
+    .eq("id", str(fd, "id"));
+  if (error) throw new Error(error.message);
+  if (active) await supabase.rpc("run_my_recurring");
+  revalidatePath("/", "layout");
+}
+
+export async function deleteRecurring(fd: FormData) {
+  const { supabase } = await getContext();
+  // Expenses already created stay; they just lose the link to the rule.
+  const { error } = await supabase.from("recurring_rules").delete().eq("id", str(fd, "id"));
+  if (error) throw new Error(error.message);
+  revalidatePath("/", "layout");
+  redirect("/settings/recurring");
+}
+
+// ---------------------------------------------------------------- imports
+
+export async function undoImport(fd: FormData) {
+  const { supabase } = await getContext();
+  const id = str(fd, "id");
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from("transactions")
+    .update({ deleted_at: now })
+    .eq("import_id", id)
+    .is("deleted_at", null);
+  if (error) throw new Error(error.message);
+  await supabase.from("imports").update({ undone_at: now }).eq("id", id);
+  revalidatePath("/", "layout");
 }
 
 export async function deleteTransaction(fd: FormData) {

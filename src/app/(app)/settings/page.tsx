@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+import { ChevronRight, FileSpreadsheet, Repeat } from "lucide-react";
 import { signOut } from "@/app/actions";
 import { PageHeader } from "@/components/page-header";
 import { getCategories, getContext } from "@/lib/data";
@@ -12,6 +14,19 @@ export default async function SettingsPage() {
   return (
     <main>
       <PageHeader title="Settings" subtitle={household?.name} />
+
+      <nav className="m-4 divide-y divide-line overflow-hidden rounded-2xl bg-white shadow-sm">
+        <Link href="/settings/recurring" className="flex items-center gap-3 px-4 py-3.5">
+          <Repeat size={18} className="text-teal" />
+          <span className="flex-1 font-medium">Recurring expenses</span>
+          <ChevronRight size={18} className="text-muted" />
+        </Link>
+        <Link href="/settings/data" className="flex items-center gap-3 px-4 py-3.5">
+          <FileSpreadsheet size={18} className="text-teal" />
+          <span className="flex-1 font-medium">Import &amp; export (Excel)</span>
+          <ChevronRight size={18} className="text-muted" />
+        </Link>
+      </nav>
 
       <section className="p-4">
         <h2 className="mb-1 font-semibold text-navy">Categories & budgets</h2>

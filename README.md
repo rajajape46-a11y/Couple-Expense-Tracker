@@ -4,7 +4,7 @@ A mobile-first web app for Raja & Jo to log and review shared expenses — the
 web version of `Monthly expense log v2.xlsx`. Built with **Next.js 16**,
 **Supabase** (Postgres + Auth) and designed to be hosted free on **Vercel**.
 
-## What it does (phase 1 & 2)
+## What it does
 
 - **Sign in** with email + password (no public sign-up – only the two of you).
 - **Quick add** from your phone: amount first, date defaults to today, tap a
@@ -14,7 +14,19 @@ web version of `Monthly expense log v2.xlsx`. Built with **Next.js 16**,
 - **Expenses list** by month, grouped by day, with search and category filter.
   Tap any row to edit or delete it (deletes are soft – nothing is lost).
 - **Home**: this month's total, fixed vs variable, spend by category against
-  budget, the all-time **settle-up** ("Jo owes Raja $…") and recent entries.
+  budget and recent entries.
+- **Monthly summary** (Summary tab): the category × month grid from the Excel
+  sheet with totals, one-offs and averages, plus a page per month with
+  budget vs actual, sub-category drill-down, biggest expenses and who paid.
+- **Excel export**: downloads everything in the "Monthly expense log v2"
+  layout (Dashboard, Monthly Summary, dropdowns, charts) – also your backup.
+- **Excel import**: your current workbook, the original layout, or an export
+  from the app. A preview shows new rows, duplicates (same date + amount +
+  merchant – skipped) and problems before anything is saved; unknown
+  categories can be created on the spot; every import can be undone.
+- **Recurring expenses**: rent, phone plans, insurance… weekly, fortnightly,
+  monthly or yearly. Created automatically each day by a Supabase job (and
+  when the app is opened, if anything is overdue). Never duplicated.
 - **Settings**: add / rename / hide categories and sub-categories and set
   monthly budgets – the Add screen updates immediately.
 - **Installable on your phone** (Add to Home Screen) with its own icon.
@@ -45,7 +57,9 @@ Open http://localhost:3000.
 1. Create a free project at [supabase.com](https://supabase.com) (pick the
    **Sydney** region). Save the database password somewhere safe.
 2. **SQL Editor → New query**: paste all of
-   `supabase/migrations/20261018000000_init.sql` → **Run**.
+   `supabase/migrations/20261018000000_init.sql` → **Run**. Then do the same
+   with `supabase/migrations/20261019000000_recurring_import_summary.sql`
+   (recurring expenses, imports, summaries and the daily 6am job).
 3. **Authentication → Users → Add user → Create new user** for each of you
    (email + password, tick **Auto Confirm User**).
 4. **Authentication → Sign In / Providers**: turn **off** "Allow new users to
@@ -110,7 +124,9 @@ Open the Vercel URL and sign in, then:
 ```
 src/
   app/
-    (app)/            signed-in pages: Home, add, transactions, settings
+    (app)/            signed-in pages: Home, add, transactions, summary, settings
+    api/export        Excel download
+    api/import/       Excel import preview & commit
     login/            sign-in page
     api/keepalive/    daily ping for Vercel Cron
     actions.ts        all server actions (save/delete expense, categories, auth)
@@ -118,7 +134,8 @@ src/
   components/         transaction form, bottom nav, list rows
   lib/
     data.ts           data access (Supabase queries, merchant memory)
-    split.ts          who-owes-whom maths
+    excel/            export (fills template.xlsx), import reader & duplicate check
+    recurring.ts      recurring date maths (mirrors the database)
     supabase/         Supabase clients
   proxy.ts            refreshes the session, protects every page
 supabase/
@@ -135,14 +152,15 @@ tests/e2e/            optional Playwright browser test
   throwaway local Postgres and checks: 56 rows / $10,891.09 imported, both
   logins see shared data, a stranger sees nothing and can't write, cross-
   household references are rejected, anonymous access is denied.
-- `tests/e2e/` – 24-step browser test (see its README).
+- `supabase/tests/recurring_import_test.sql` (run by the same script) – recurring
+  dates incl. month-ends and leap years, no duplicates on re-runs, pause/end
+  dates, households isolated, import permissions, monthly view security.
+- `tests/e2e/` – browser tests: `e2e_test.py` (24 checks) and `e2e_test2.py`
+  (35 checks: summary pages, export → re-import round trip, imports of the old
+  and new workbooks, partial overlaps, undo, recurring expenses).
 
 ## Roadmap
 
-- **Phase 3 – Dashboard**: month picker, one-off toggle, category & trend
-  charts, budget vs actual, biggest transactions, drill-down (like the Excel
-  dashboard).
-- **Phase 4 – Data in/out**: bank CSV import with duplicate detection, CSV /
-  Excel export (also your backup).
-- **Later**: recurring expenses (rent, mobile, insurance), receipt photos,
-  record settle-up payments, budget alerts, offline entry.
+- Trend charts on the Summary page.
+- Bank CSV import (same duplicate rules as the Excel import).
+- Receipt photos, budget alerts, offline entry.

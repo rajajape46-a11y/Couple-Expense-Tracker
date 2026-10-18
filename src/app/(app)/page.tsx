@@ -1,19 +1,15 @@
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { TxnRow } from "@/components/txn-row";
-import { getAllForBalance, getCategories, getContext, getTransactions } from "@/lib/data";
+import { catchUpRecurring, getCategories, getContext, getTransactions } from "@/lib/data";
 import { monthLabel, monthRange, money, money0, thisMonth } from "@/lib/format";
-import { balances, settleSentence } from "@/lib/split";
 
 export default async function HomePage() {
   const month = thisMonth();
   const { from, to } = monthRange(month);
   const { people, me } = await getContext();
-  const [txns, categories, allRows] = await Promise.all([
-    getTransactions({ from, to }),
-    getCategories(true),
-    getAllForBalance(),
-  ]);
+  await catchUpRecurring();
+  const [txns, categories] = await Promise.all([getTransactions({ from, to }), getCategories(true)]);
 
   const total = txns.reduce((s, t) => s + t.amount, 0);
   const oneOff = txns.filter((t) => t.is_one_off).reduce((s, t) => s + t.amount, 0);
@@ -30,7 +26,6 @@ export default async function HomePage() {
 
   const catName = new Map(categories.map((c) => [c.id, c.name]));
   const subName = new Map(categories.flatMap((c) => c.subcategories.map((s) => [s.id, s.name])));
-  const bal = balances(allRows, people);
 
   return (
     <main>
@@ -49,24 +44,15 @@ export default async function HomePage() {
         <Stat label="Variable wants" value={money0(variable)} pct={total ? variable / total : 0} />
       </section>
 
-      <section className="mx-4 rounded-2xl bg-teal p-4 text-white shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-wide text-white/80">Settle up · all time</p>
-        <p className="mt-1 text-lg font-bold">{settleSentence(bal, money)}</p>
-        <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-white/85">
-          {bal.map((b) => (
-            <p key={b.person.id}>
-              {b.person.name}: paid {money0(b.paid)}, share {money0(b.share)}
-            </p>
-          ))}
-        </div>
-      </section>
-
       <section className="m-4 rounded-2xl bg-white p-4 shadow-sm">
         <div className="mb-3 flex items-baseline justify-between">
           <h2 className="font-semibold text-navy">By category</h2>
-          <span className="text-xs text-muted">bar = spent · line = budget</span>
+          <Link href={`/summary/${month}`} className="text-sm font-medium text-teal">
+            Month summary
+          </Link>
         </div>
         {catRows.length === 0 && <p className="text-sm text-muted">Nothing logged this month yet.</p>}
+        {catRows.length > 0 && <p className="mb-3 text-xs text-muted">Bar = spent · amber line = monthly budget</p>}
         <ul className="space-y-3">
           {catRows.map(({ c, spent }) => {
             const budget = c.monthly_budget ?? 0;

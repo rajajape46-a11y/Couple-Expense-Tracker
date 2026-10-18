@@ -27,6 +27,9 @@ export function TxnRow({
             {subcategoryName ?? categoryName} · {payer} paid
             {owner ? ` · ${owner} only` : " · shared"}
             {t.is_one_off && <span className="ml-1 rounded bg-amber/20 px-1 text-[10px] font-semibold text-amber">ONE-OFF</span>}
+            {t.recurring_rule_id && (
+              <span className="ml-1 rounded bg-teal-soft px-1 text-[10px] font-semibold text-teal">RECURRING</span>
+            )}
           </p>
         </div>
         <span className={`shrink-0 font-semibold tabular-nums ${t.amount < 0 ? "text-teal" : ""}`}>

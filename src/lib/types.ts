@@ -42,6 +42,34 @@ export type Transaction = {
   amount: number;
   is_one_off: boolean;
   notes: string | null;
+  recurring_rule_id: string | null;
+};
+
+export const FREQUENCIES = ["weekly", "fortnightly", "monthly", "yearly"] as const;
+export type Frequency = (typeof FREQUENCIES)[number];
+export const FREQUENCY_LABEL: Record<Frequency, string> = {
+  weekly: "Weekly",
+  fortnightly: "Fortnightly",
+  monthly: "Monthly",
+  yearly: "Yearly",
+};
+
+export type RecurringRule = Omit<Transaction, "id" | "txn_date" | "recurring_rule_id"> & {
+  id: string;
+  frequency: Frequency;
+  start_date: string;
+  end_date: string | null;
+  next_index: number;
+  is_active: boolean;
+};
+
+export type ImportRecord = {
+  id: string;
+  file_name: string;
+  rows_added: number;
+  rows_skipped: number;
+  created_at: string;
+  undone_at: string | null;
 };
 
 /** Defaults remembered from the most recent use of a merchant. */
